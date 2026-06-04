@@ -1,0 +1,16 @@
+[package]
+name = "keyguard-trainer"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal typing trainer - defend against falling words"
+license = "MIT"
+
+[dependencies]
+ratatui = "0.28"
+crossterm = "0.28"
+rand = "0.8"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
