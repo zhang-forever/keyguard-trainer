@@ -35,6 +35,13 @@ impl Word {
         let mut rng = rand::thread_rng();
         let x = rng.gen_range(2.0..(term_width as f64 - text.len() as f64 - 2.0));
         let speed = rng.gen_range(0.3..1.5);
-        Self { text, x, y: 0.0, speed, typed: String::new(), alive: true }
+        Self {
+            text,
+            x,
+            y: 0.0,
+            speed,
+            typed: String::new(),
+            alive: true,
+        }
     }
 }

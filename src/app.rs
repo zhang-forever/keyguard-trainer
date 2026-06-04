@@ -13,9 +13,8 @@ use std::time::{Duration, Instant};
 use crate::Word;
 
 const WORDS: &[&str] = &[
-    "hello", "world", "rust", "code", "type", "fast", "system",
-    "memory", "async", "trait", "struct", "impl", "match", "loop",
-    "cargo", "module", "string", "array", "vector", "result",
+    "hello", "world", "rust", "code", "type", "fast", "system", "memory", "async", "trait",
+    "struct", "impl", "match", "loop", "cargo", "module", "string", "array", "vector", "result",
 ];
 
 pub struct App {
@@ -49,7 +48,10 @@ impl App {
         }
     }
 
-    pub fn run(&mut self, terminal: &mut Terminal<impl ratatui::backend::Backend>) -> io::Result<()> {
+    pub fn run(
+        &mut self,
+        terminal: &mut Terminal<impl ratatui::backend::Backend>,
+    ) -> io::Result<()> {
         loop {
             let term_width = terminal.size()?.width;
             terminal.draw(|f| self.ui(f))?;
@@ -137,7 +139,10 @@ impl App {
             true
         });
 
-        let elapsed = Instant::now().duration_since(Instant::now()).as_secs_f64().max(0.001);
+        let elapsed = Instant::now()
+            .duration_since(Instant::now())
+            .as_secs_f64()
+            .max(0.001);
         self.wpm = (self.correct_keystrokes as f64 / 5.0) / (elapsed / 60.0);
         if self.total_keystrokes > 0 {
             self.accuracy = (self.correct_keystrokes as f64 / self.total_keystrokes as f64) * 100.0;
@@ -159,8 +164,11 @@ impl App {
             self.score, self.wpm, self.accuracy, self.lives
         );
         f.render_widget(
-            Paragraph::new(stats)
-                .block(Block::default().borders(Borders::ALL).title("KEYGUARD TRAINER")),
+            Paragraph::new(stats).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("KEYGUARD TRAINER"),
+            ),
             chunks[0],
         );
 
@@ -199,8 +207,7 @@ impl App {
         }
 
         f.render_widget(
-            Paragraph::new(format!("> {}", self.input))
-                .style(Style::default().fg(Color::Green)),
+            Paragraph::new(format!("> {}", self.input)).style(Style::default().fg(Color::Green)),
             chunks[2],
         );
     }
