@@ -10,11 +10,14 @@ use ratatui::{
 use std::io;
 use std::time::{Duration, Instant};
 
-use crate::Word;
+use crate::{Difficulty, Word};
 
 const WORDS: &[&str] = &[
     "hello", "world", "rust", "code", "type", "fast", "system", "memory", "async", "trait",
     "struct", "impl", "match", "loop", "cargo", "module", "string", "array", "vector", "result",
+    "option", "iter", "macro", "slice", "clone", "debug", "error", "stack", "queue", "hash",
+    "tree", "sort", "filter", "reduce", "panic", "mutex", "thread", "spawn", "future", "tokio",
+    "unsafe", "ref", "move", "pub", "self", "super", "crate", "where", "enum", "box",
 ];
 
 pub struct App {
@@ -29,10 +32,13 @@ pub struct App {
     input: String,
     spawn_timer: Instant,
     game_over: bool,
+    difficulty: Difficulty,
+    game_start: Instant,
+    words_typed: u32,
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(difficulty: Difficulty) -> Self {
         Self {
             words: Vec::new(),
             score: 0,
@@ -40,11 +46,14 @@ impl App {
             accuracy: 100.0,
             total_keystrokes: 0,
             correct_keystrokes: 0,
-            lives: 10,
+            lives: difficulty.starting_lives(),
             tick: Instant::now(),
             input: String::new(),
             spawn_timer: Instant::now(),
             game_over: false,
+            difficulty,
+            game_start: Instant::now(),
+            words_typed: 0,
         }
     }
 
@@ -59,7 +68,7 @@ impl App {
             if self.game_over {
                 if event::poll(Duration::from_secs(5))? {
                     if let Event::Key(_) = event::read()? {
-                        *self = App::new();
+                        *self = App::new(self.difficulty);
                         continue;
                     }
                 }
@@ -74,11 +83,15 @@ impl App {
                             self.total_keystrokes += 1;
                             let mut matched = false;
                             for w in &mut self.words {
+                                if !w.alive {
+                                    continue;
+                                }
                                 w.typed.push(c);
                                 if w.typed == w.text {
                                     w.alive = false;
                                     self.score += w.text.len() as u32;
                                     self.correct_keystrokes += w.text.len() as u32;
+                                    self.words_typed += 1;
                                     matched = true;
                                 } else if !w.text.starts_with(&w.typed) {
                                     w.typed.pop();
@@ -95,7 +108,9 @@ impl App {
                         KeyCode::Backspace => {
                             self.input.pop();
                             for w in &mut self.words {
-                                w.typed.pop();
+                                if w.alive {
+                                    w.typed.pop();
+                                }
                             }
                         }
                         KeyCode::Esc => return Ok(()),
@@ -112,9 +127,10 @@ impl App {
     fn update(&mut self, term_width: u16) {
         let mut rng = rand::thread_rng();
 
-        if self.spawn_timer.elapsed() > Duration::from_millis(2000) {
+        if self.spawn_timer.elapsed() > Duration::from_millis(self.difficulty.spawn_interval_ms()) {
             let word_text = WORDS[rng.gen_range(0..WORDS.len())].to_string();
-            self.words.push(Word::new(word_text, term_width));
+            self.words
+                .push(Word::new(word_text, term_width, self.difficulty.speed_range()));
             self.spawn_timer = Instant::now();
         }
 
@@ -122,7 +138,9 @@ impl App {
         self.tick = Instant::now();
 
         for w in &mut self.words {
-            w.y += w.speed * dt * 5.0;
+            if w.alive {
+                w.y += w.speed * dt * 5.0;
+            }
         }
 
         self.words.retain(|w| {
@@ -139,13 +157,15 @@ impl App {
             true
         });
 
-        let elapsed = Instant::now()
-            .duration_since(Instant::now())
-            .as_secs_f64()
-            .max(0.001);
-        self.wpm = (self.correct_keystrokes as f64 / 5.0) / (elapsed / 60.0);
+        // WPM: based on characters typed / 5 / minutes elapsed
+        let elapsed = self.game_start.elapsed().as_secs_f64().max(1.0);
+        let minutes = elapsed / 60.0;
+        if minutes > 0.0 {
+            self.wpm = (self.correct_keystrokes as f64 / 5.0) / minutes;
+        }
         if self.total_keystrokes > 0 {
-            self.accuracy = (self.correct_keystrokes as f64 / self.total_keystrokes as f64) * 100.0;
+            self.accuracy =
+                (self.correct_keystrokes as f64 / self.total_keystrokes as f64) * 100.0;
         }
     }
 
@@ -159,9 +179,14 @@ impl App {
             ])
             .split(f.area());
 
+        let diff_label = match self.difficulty {
+            Difficulty::Easy => "Easy",
+            Difficulty::Normal => "Normal",
+            Difficulty::Hard => "Hard",
+        };
         let stats = format!(
-            "Score: {} | WPM: {:.0} | Accuracy: {:.1}% | Lives: {}",
-            self.score, self.wpm, self.accuracy, self.lives
+            "Score: {} | WPM: {:.0} | Accuracy: {:.1}% | Lives: {} | Difficulty: {}",
+            self.score, self.wpm, self.accuracy, self.lives, diff_label
         );
         f.render_widget(
             Paragraph::new(stats).block(
@@ -173,8 +198,12 @@ impl App {
         );
 
         if self.game_over {
+            let summary = format!(
+                "GAME OVER — Score: {} | WPM: {:.0} | Words: {} | Press any key to restart",
+                self.score, self.wpm, self.words_typed
+            );
             f.render_widget(
-                Paragraph::new("GAME OVER — Press any key to restart")
+                Paragraph::new(summary)
                     .style(Style::default().fg(Color::Red))
                     .block(Block::default().borders(Borders::ALL)),
                 chunks[1],
@@ -185,9 +214,9 @@ impl App {
                 .iter()
                 .map(|w| {
                     let y_pad = " ".repeat(w.y as usize);
-                    let typed_len = w.typed.len();
-                    let correct = &w.text[..typed_len.min(w.text.len())];
-                    let remaining = &w.text[typed_len.min(w.text.len())..];
+                    let typed_len = w.typed.len().min(w.text.len());
+                    let correct = &w.text[..typed_len];
+                    let remaining = &w.text[typed_len..];
                     let line = format!(
                         "{}{}{}{}",
                         " ".repeat(w.x as usize),
@@ -207,8 +236,62 @@ impl App {
         }
 
         f.render_widget(
-            Paragraph::new(format!("> {}", self.input)).style(Style::default().fg(Color::Green)),
+            Paragraph::new(format!("> {}", self.input))
+                .style(Style::default().fg(Color::Green)),
             chunks[2],
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_new_default_difficulty() {
+        let app = App::new(Difficulty::Normal);
+        assert_eq!(app.score, 0);
+        assert_eq!(app.lives, 10);
+        assert_eq!(app.accuracy, 100.0);
+        assert!(!app.game_over);
+        assert!(app.words.is_empty());
+        assert!(app.input.is_empty());
+        assert_eq!(app.correct_keystrokes, 0);
+        assert_eq!(app.total_keystrokes, 0);
+    }
+
+    #[test]
+    fn test_app_new_easy_difficulty() {
+        let app = App::new(Difficulty::Easy);
+        assert_eq!(app.lives, 15);
+    }
+
+    #[test]
+    fn test_app_new_hard_difficulty() {
+        let app = App::new(Difficulty::Hard);
+        assert_eq!(app.lives, 5);
+    }
+
+    #[test]
+    fn test_app_difficulty_preserved() {
+        let app = App::new(Difficulty::Hard);
+        assert_eq!(app.difficulty, Difficulty::Hard);
+    }
+
+    #[test]
+    fn test_word_list_not_empty() {
+        assert!(!WORDS.is_empty());
+        for w in WORDS {
+            assert!(!w.is_empty(), "Word list contains empty string");
+        }
+    }
+
+    #[test]
+    fn test_word_list_no_duplicates() {
+        let mut sorted = WORDS.to_vec();
+        sorted.sort();
+        let before = sorted.len();
+        sorted.dedup();
+        assert_eq!(before, sorted.len(), "Word list has duplicates");
     }
 }
