@@ -129,8 +129,11 @@ impl App {
 
         if self.spawn_timer.elapsed() > Duration::from_millis(self.difficulty.spawn_interval_ms()) {
             let word_text = WORDS[rng.gen_range(0..WORDS.len())].to_string();
-            self.words
-                .push(Word::new(word_text, term_width, self.difficulty.speed_range()));
+            self.words.push(Word::new(
+                word_text,
+                term_width,
+                self.difficulty.speed_range(),
+            ));
             self.spawn_timer = Instant::now();
         }
 
@@ -164,8 +167,7 @@ impl App {
             self.wpm = (self.correct_keystrokes as f64 / 5.0) / minutes;
         }
         if self.total_keystrokes > 0 {
-            self.accuracy =
-                (self.correct_keystrokes as f64 / self.total_keystrokes as f64) * 100.0;
+            self.accuracy = (self.correct_keystrokes as f64 / self.total_keystrokes as f64) * 100.0;
         }
     }
 
@@ -236,8 +238,7 @@ impl App {
         }
 
         f.render_widget(
-            Paragraph::new(format!("> {}", self.input))
-                .style(Style::default().fg(Color::Green)),
+            Paragraph::new(format!("> {}", self.input)).style(Style::default().fg(Color::Green)),
             chunks[2],
         );
     }
